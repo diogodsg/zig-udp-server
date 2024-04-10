@@ -26,10 +26,23 @@ pub fn handleRequest(socket: os.socket_t, message: []const u8) !void {
                 if (std.mem.eql(u8, shouldCorrupt, "true")) fileRequest.corrupt = true;
             }
         }
+        var hasFile = true;
+        std.fs.cwd().access(fileRequest.filename, .{}) catch |e|
+            switch (e) {
+            error.FileNotFound => {
+                std.debug.print("File {s} doesn't exists", .{fileRequest.filename});
+                hasFile = false;
+            },
+            else => return e,
+        };
 
-        // std.debug.print("FileName={s}\n", .{fileRequest.filename});
-        // std.debug.print("Part={}\n", .{fileRequest.part});
+        if (!hasFile) {
+            const address = try std.net.Address.parseIp4("127.0.0.1", 3001);
 
+            _ = try os.sendto(socket, "File Not Found", 0, &address.any, address.getOsSockLen());
+
+            return;
+        }
         try sendFile(socket, fileRequest.filename, fileRequest.part, fileRequest.corrupt);
     }
 }
@@ -76,23 +89,19 @@ pub fn sendFile(socket: os.socket_t, filename: []const u8, part: i32, corrupt: b
     defer file.close();
     const fileStat = try file.stat();
 
-    // Ensure both operands are of type f64
     const fileSizeFloat: f64 = @as(f64, @floatFromInt(fileStat.size));
-    // const bufferSizeFloat: f64 = @as(f64, @floatFromInt(BUFFER_SIZE));
 
-    // std.debug.print("Filesize: {}\n", .{fileStat.size});
-    // std.debug.print("parts: {}\n", .{@ceil(fileSizeFloat / bufferSizeFloat)});
     const allocator = std.heap.page_allocator;
     var count: u8 = 0;
     const checksum = try generateCheckSumForFile(filename);
-    var headers = try std.fmt.allocPrint(allocator, "--output-file={s}\n--parts={:0>5}/{:0>5}\n--checksum={:0>16}/{:0>16}\n--data=", .{ "output-file.txt", count, 0, checksum, checksum });
+    var headers = try std.fmt.allocPrint(allocator, "--output-file={s}\n--parts={:0>5}/{:0>5}\n--checksum={:0>16}/{:0>16}\n--data=", .{ filename, count, 0, checksum, checksum });
     const dataSize: f64 = @as(f64, @floatFromInt(BUFFER_SIZE - headers.len));
     const totalParts = @as(u32, @intFromFloat(@ceil(fileSizeFloat / dataSize))) - 1;
     const headerSize = headers.len;
     while (true) {
         const bytesRead = try file.read(buffer[headerSize..]);
         const partChecksum = try generateCheckSumForPart(buffer[headerSize..]);
-        headers = try std.fmt.allocPrint(allocator, "--output-file={s}\n--parts={:0>5}/{:0>5}\n--checksum={:0>16}/{:0>16}\n--data=", .{ "output-file.txt", count, totalParts, partChecksum, checksum });
+        headers = try std.fmt.allocPrint(allocator, "--output-file={s}\n--parts={:0>5}/{:0>5}\n--checksum={:0>16}/{:0>16}\n--data=", .{ filename, count, totalParts, partChecksum, checksum });
         _ = @memcpy(buffer[0..headers.len], headers);
         if (bytesRead == 0) {
             break;

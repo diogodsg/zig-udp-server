@@ -6,15 +6,11 @@ const BUFFER_SIZE = 1024 * 4;
 const GetFileResponse = struct { filename: []const u8, part: u32, totalParts: u32, partChecksum: u32, checkSum: u32, data: []const u8 };
 
 pub fn generateCheckSum(filename: []const u8) !u32 {
-
-    // Open the file
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
 
-    // Create a CRC32 hasher
     var crc32 = std.hash.Crc32.init();
 
-    // Read the file in chunks and update the CRC32 hash
     var buffer: [BUFFER_SIZE]u8 = undefined;
     while (true) {
         const bytesRead = try file.read(buffer[0..]);
@@ -82,7 +78,6 @@ const Socket = struct {
         const rand = prng.random();
 
         var ptr = try allocator.alloc(u8, 100);
-        defer allocator.free(ptr);
         var receivedparts = try allocator.alloc(u8, 1024);
         for (0..receivedparts.len) |i| {
             receivedparts[i] = 0;
@@ -111,8 +106,11 @@ const Socket = struct {
             }
 
             const message = buffer[0..bytesRead];
-
+            if (std.mem.eql(u8, message, "File Not Found")) {
+                return;
+            }
             std.debug.print("Received {d} bytes\n", .{bytesRead});
+
             var parts = std.mem.split(u8, message, "\n--data=");
 
             const headers = parts.next().?;
@@ -170,24 +168,25 @@ const Socket = struct {
             std.fs.cwd().access(filename, .{}) catch |e|
                 switch (e) {
                 error.FileNotFound => {
-                    std.log.err("File {s} doesn't exists, creating...", .{filename});
+                    std.debug.print("File {s} doesn't exists, creating...", .{filename});
                     const createdFile = try std.fs.cwd().createFile(filename, .{});
                     defer createdFile.close();
                 },
                 else => return e,
             };
 
-            const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_write });
-            defer file.close();
-            var stat = try file.stat();
-            try file.seekTo(stat.size);
-
             if (fileResponse.part == fileResponse.totalParts) {
+                // try std.fs.cwd().deleteFile(fileResponse.filename);
+                const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_write });
+                defer file.close();
+                var stat = try file.stat();
+                try file.seekTo(stat.size);
                 try file.writeAll(ptr[0..(allocationCounter)]);
 
                 const checksum = try generateCheckSum(fileResponse.filename);
                 if (checksum == fileResponse.checkSum) {
                     std.debug.print("Checksum succed!\n", .{});
+                    return;
                 } else {
                     std.debug.print("Checksum failed!\n", .{});
                     allocationCounter -= fileResponse.data.len;
@@ -249,5 +248,6 @@ pub fn main() !void {
     const shouldCorrupt = (try nextLine(stdin.reader(), &input_buffer_should_corrupt)).?;
 
     // _ = try sendMessage();
+
     try socket.receiveFile(filename, shouldCorrupt);
 }
