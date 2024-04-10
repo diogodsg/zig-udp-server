@@ -6,7 +6,7 @@ const GetFileRequest = struct { filename: []const u8, part: i32, corrupt: bool }
 
 const BUFFER_SIZE = 1024 * 4;
 
-pub fn handleRequest(socket: os.socket_t, message: []const u8) !void {
+pub fn handleRequest(socket: os.socket_t, message: []const u8, client_address: net.Address) !void {
     var it = std.mem.split(u8, message, "\n");
     const endpoint = it.next().?;
 
@@ -37,13 +37,11 @@ pub fn handleRequest(socket: os.socket_t, message: []const u8) !void {
         };
 
         if (!hasFile) {
-            const address = try std.net.Address.parseIp4("127.0.0.1", 3001);
-
-            _ = try os.sendto(socket, "File Not Found", 0, &address.any, address.getOsSockLen());
+            _ = try os.sendto(socket, "File Not Found", 0, &client_address.any, client_address.getOsSockLen());
 
             return;
         }
-        try sendFile(socket, fileRequest.filename, fileRequest.part, fileRequest.corrupt);
+        try sendFile(socket, fileRequest.filename, fileRequest.part, fileRequest.corrupt, client_address);
     }
 }
 
@@ -81,9 +79,7 @@ pub fn generateCheckSumForPart(part: []const u8) !u32 {
     return checksum;
 }
 
-pub fn sendFile(socket: os.socket_t, filename: []const u8, part: i32, corrupt: bool) !void {
-    const address = try std.net.Address.parseIp4("127.0.0.1", 3001);
-
+pub fn sendFile(socket: os.socket_t, filename: []const u8, part: i32, corrupt: bool, address: net.Address) !void {
     var buffer: [BUFFER_SIZE]u8 = undefined;
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
@@ -139,15 +135,19 @@ const Socket = struct {
     pub fn listen(self: *Socket) !void {
         var buffer: [BUFFER_SIZE]u8 = undefined;
 
+        var sa: net.Address = undefined;
+        var sl: os.socklen_t = @sizeOf(os.sockaddr.in);
+
         while (true) {
-            const bytesRead = try os.recvfrom(self.socket, buffer[0..], 0, null, null);
+            var sl_copy = sl;
+            const bytesRead = try os.recvfrom(self.socket, buffer[0..], 0, &sa.any, &sl_copy);
 
             if (bytesRead == 0) break;
 
             const message = buffer[0..bytesRead];
             std.debug.print("Received {d} bytes: {s}\n", .{ bytesRead, message });
             // _ = try os.sendto(self.socket, buffer[0..bytesRead], 0, &address.any, address.getOsSockLen());
-            try handleRequest(self.socket, message);
+            try handleRequest(self.socket, message, sa);
         }
     }
 };
