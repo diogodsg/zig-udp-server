@@ -153,7 +153,7 @@ const Socket = struct {
 };
 
 pub fn main() !void {
-    var socket = try Socket.init("127.0.0.1", 3000);
+    var socket = try Socket.init("172.23.110.147", 3000);
     try socket.bind();
     try socket.listen();
 }

@@ -87,7 +87,7 @@ const Socket = struct {
         var allocationCounterV2: usize = 0;
         var counter: usize = 0;
 
-        const ip = "127.0.0.1";
+        const ip = "192.168.68.51";
         const port: u16 = 3000;
         const address = try std.net.Address.parseIp4(ip, port);
 
@@ -199,34 +199,8 @@ const Socket = struct {
     }
 };
 
-pub fn sendMessage() !void {
-    // const ip = "127.0.0.1";
-    // const port: u16 = 3000;
-
-    const stdout = std.io.getStdOut();
-    const stdin = std.io.getStdIn();
-
-    try stdout.writeAll(
-        \\ Enter your name:
-    );
-
-    var input_buffer: [100]u8 = undefined;
-    const input = (try nextLine(stdin.reader(), &input_buffer)).?;
-    try stdout.writer().print(
-        "Your name is: \"{s}\"\n",
-        .{input},
-    );
-
-    const sock = try os.socket(os.AF.INET, os.SOCK.DGRAM, 0);
-    defer os.closeSocket(sock);
-
-    // const address = try std.net.Address.parseIp4(ip, port);
-    // const message = "GET /file\n--file-name=file.txt\n--part=0";
-    // _ = try os.sendto(sock, message, 0, &address.any, address.getOsSockLen());
-}
-
 pub fn main() !void {
-    var socket = try Socket.init("127.0.0.1", 3001);
+    var socket = try Socket.init("192.168.68.58", 3001);
     try socket.bind();
 
     const stdout = std.io.getStdOut();
@@ -238,7 +212,6 @@ pub fn main() !void {
 
     var input_buffer_filename: [100]u8 = undefined;
     const filename = (try nextLine(stdin.reader(), &input_buffer_filename)).?;
-    // std.debug.print("\n\nFile Name: x{s}x\n\n", .{filename});
 
     try stdout.writeAll(
         \\ Should Corrupt (y/n): 
@@ -246,8 +219,6 @@ pub fn main() !void {
     var input_buffer_should_corrupt: [100]u8 = undefined;
 
     const shouldCorrupt = (try nextLine(stdin.reader(), &input_buffer_should_corrupt)).?;
-
-    // _ = try sendMessage();
 
     try socket.receiveFile(filename, shouldCorrupt);
 }
